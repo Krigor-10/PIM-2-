@@ -11,8 +11,8 @@
 #endif
 
 // --- CONSTANTES GLOBAIS ---
-#define NOME_ARQUIVO "C:\\estudos\\tabela_usuarios.csv"
-#define PASTA_EXERCICIOS "C:\\estudos\\exercicios_enviados"
+#define NOME_ARQUIVO "tabela_usuarios.csv"
+#define PASTA_EXERCICIOS "exercicios_enviados"
 #define TAM_TURMA 8
 
 // Lista de turmas fixas
@@ -39,6 +39,7 @@ void mostrarAlunosPorTurma();      // <-- NOVO
 void atualizarNotas();
 void gerenciarTurmas();
 void gerenciarUsuarios();
+void excluirUsuario(const char *nivelExecutor);
 void mostrarTodosUsuarios();
 void cadastrarUsuarios();
 void cadastrarUsuariosCoordenador(); // <-- NOVO
@@ -297,6 +298,110 @@ void cadastrarUsuariosCoordenador() {
 
 // --- FIM DA SEÇÃO DE CADASTRO ---
 
+/**
+ * @brief Exclui um usuário do arquivo CSV pelo ID.
+ * Implementa a regra de não permitir a exclusão de "admin".
+ */
+/**
+ * @brief Exclui um usuário do arquivo CSV pelo ID, aplicando regras de permissão.
+ * @param nivelExecutor O nível do usuário que está executando a exclusão ("admin", "coordenador").
+ */
+void excluirUsuario(const char *nivelExecutor) {
+    FILE *arquivo, *temp;
+    char linha[400], linha_original[400];
+    int idBusca, id, idade, np1, np2, pim;
+    char nome[50], email[50], senha[20], nivel_alvo[20], curso[50], turma[100];
+    int encontrado = 0;
+    int excluido = 0;
+
+    printf("\n=== EXCLUIR USUÁRIO ===\n");
+    printf("Digite o ID do usuário a ser excluído: ");
+    if (scanf("%d", &idBusca) != 1) {
+        printf("ID inválido.\n");
+        limpar_buffer_entrada();
+        return;
+    }
+    limpar_buffer_entrada();
+
+    arquivo = fopen(NOME_ARQUIVO, "r");
+    if (!arquivo) {
+        printf("Erro: Arquivo %s não encontrado.\n", NOME_ARQUIVO);
+        return;
+    }
+
+    temp = fopen("temp.csv", "w");
+    if (!temp) {
+        printf("Erro: Não foi possível criar arquivo temporário.\n");
+        fclose(arquivo);
+        return;
+    }
+
+    // Copia o cabeçalho
+    if (fgets(linha, sizeof(linha), arquivo)) {
+        fprintf(temp, "%s", linha);
+    }
+
+    // Itera sobre o arquivo
+    while (fgets(linha, sizeof(linha), arquivo)) {
+        strcpy(linha_original, linha);
+
+        int result = sscanf(linha, "%d,%49[^,],%49[^,],%19[^,],%d,%19[^,],%49[^,],%d,%d,%d,%99[^\n]",
+                      &id, nome, email, senha, &idade, nivel_alvo, curso, &np1, &np2, &pim, turma);
+        
+        if (result != 11) {
+            fprintf(temp, "%s", linha_original);
+            continue;
+        }
+
+        if (id == idBusca) {
+            encontrado = 1;
+            trimWhitespace(nivel_alvo);
+            toLowerString(nivel_alvo);
+
+            int podeExcluir = 0; // Flag para controlar a permissão
+
+            // --- LÓGICA DE PERMISSÃO ---
+            if (strcmp(nivelExecutor, "admin") == 0) {
+                if (strcmp(nivel_alvo, "admin") == 0) {
+                    printf("❌ ERRO: Um Admin não pode excluir outro usuário 'admin'.\n");
+                } else {
+                    podeExcluir = 1; // Admin pode excluir qualquer outro nível
+                }
+            } 
+            else if (strcmp(nivelExecutor, "coordenador") == 0) {
+                if (strcmp(nivel_alvo, "professor") == 0 || strcmp(nivel_alvo, "aluno") == 0) {
+                    podeExcluir = 1; // Coordenador pode excluir professor e aluno
+                } else {
+                    printf("❌ PERMISSÃO NEGADA: Coordenador não pode excluir usuários de nível '%s'.\n", nivel_alvo);
+                }
+            }
+
+            // --- AÇÃO DE EXCLUSÃO ---
+            if (podeExcluir) {
+                printf("✅ Usuário '%s' (Nível: %s) foi excluído com sucesso.\n", nome, nivel_alvo);
+                excluido = 1;
+                // NÃO escreve a linha no arquivo temporário
+            } else {
+                // Se não tem permissão, mantém a linha no arquivo
+                fprintf(temp, "%s", linha_original);
+            }
+        
+        } else {
+            // Se não é o ID procurado, apenas copia a linha para o temp
+            fprintf(temp, "%s", linha_original);
+        }
+    }
+
+    fclose(arquivo);
+    fclose(temp);
+
+    remove(NOME_ARQUIVO);
+    rename("temp.csv", NOME_ARQUIVO);
+
+    if (!encontrado) {
+        printf("⚠️ Usuário com ID %d não foi encontrado.\n", idBusca);
+    }
+}
 
 // Atualizar notas
 void atualizarNotas() {
@@ -398,7 +503,7 @@ void enviarExercicioPDF() {
     strncpy(nomeArquivo, nome, sizeof(nomeArquivo) - 1);
     nomeArquivo[sizeof(nomeArquivo) - 1] = '\0';
 
-    snprintf(destino, sizeof(destino), "%s\\%s", PASTA_EXERCICIOS, nomeArquivo);
+    snprintf(destino, sizeof(destino), "%s/%s", PASTA_EXERCICIOS, nomeArquivo);
 
     origem = fopen(caminhoPDF, "rb");
     if (!origem) {
@@ -644,21 +749,25 @@ void mostrarAlunosPorTurma() {
 // --- MENUS E GERENCIAMENTO ---
 
 // Gerenciar usuários (Submenu do Admin)
+
+// Gerenciar usuários (Submenu do Admin)
 void gerenciarUsuarios() {
     int op;
     do {
         printf("\n=== GERENCIAR USUÁRIOS ===\n");
         printf("1 - Mostrar todos os usuários\n");
         printf("2 - Cadastrar novo usuário\n");
+        printf("3 - Excluir usuário\n"); // O texto não precisa mudar
         printf("0 - Voltar ao Menu Admin\n");
         printf("Opção: ");
         
-        if(scanf("%d", &op) != 1) op = -1; // Trata entrada inválida
+        if(scanf("%d", &op) != 1) op = -1;
         limpar_buffer_entrada();
 
         switch (op) {
             case 1: mostrarTodosUsuarios(); break;
-            case 2: cadastrarUsuarios(); break; // Admin chama a função de cadastro completa
+            case 2: cadastrarUsuarios(); break; 
+            case 3: excluirUsuario("admin"); break; // <-- MODIFIQUE AQUI
             case 0: break;
             default: printf("Opção inválida.\n");
         }
@@ -724,23 +833,25 @@ void menuProfessor() {
 }
 
 // Menu Coordenador (ATUALIZADO)
+// Menu Coordenador (ATUALIZADO)
 void menuCoordenador() {
     int op;
     do {
         printf("\n=== MENU COORDENADOR ===\n");
-        printf("1 - Cadastrar (Professor ou Aluno)\n"); // <-- NOVO
+        printf("1 - Cadastrar (Professor ou Aluno)\n");
         printf("2 - Atualizar Notas de Aluno\n");
         printf("3 - Visualizar Relatórios (Notas por Turma)\n");
-        printf("4 - Mostrar Alunos por Turma\n"); // <-- NOVO
+        printf("4 - Mostrar Alunos por Turma\n");
+        printf("5 - Excluir Usuário (Professor ou Aluno)\n"); // <-- ADICIONE ESTA LINHA
         printf("0 - Sair\n");
         printf("Opção: ");
         
-        if(scanf("%d", &op) != 1) op = -1; // Trata entrada inválida
+        if(scanf("%d", &op) != 1) op = -1;
         limpar_buffer_entrada(); 
 
         switch (op) {
             case 1:
-                cadastrarUsuariosCoordenador(); // <-- NOVO
+                cadastrarUsuariosCoordenador();
                 break;
             case 2:
                 atualizarNotas();
@@ -749,7 +860,10 @@ void menuCoordenador() {
                 visualizarRelatorios();
                 break;
             case 4:
-                mostrarAlunosPorTurma(); // <-- NOVO
+                mostrarAlunosPorTurma();
+                break;
+            case 5:
+                excluirUsuario("coordenador"); // <-- ADICIONE ESTA LINHA
                 break;
             case 0:
                 printf("Saindo do menu coordenador...\n");
@@ -873,11 +987,13 @@ void loginUsuario() {
 }
 
 // Inicialização do arquivo CSV
+// Inicialização do arquivo CSV
 void inicializarArquivoCSV() {
     FILE *arquivo = fopen(NOME_ARQUIVO, "a+"); 
     if (!arquivo) {
+        // MENSAGEM DE ERRO ATUALIZADA
         printf("ERRO FATAL: Não foi possível criar ou abrir o arquivo de usuários em %s.\n", NOME_ARQUIVO);
-        printf("Verifique se a pasta C:\\estudos existe.\n");
+        printf("Verifique se você tem permissão de escrita no diretório atual.\n");
         exit(1);
     }
     
